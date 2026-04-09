@@ -1,0 +1,368 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SmartBoard Minimal Pro</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Sanskrit&display=swap" rel="stylesheet">
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Poppins',sans-serif;
+  background:#0f172a;
+  color:white;
+  display:flex;
+  height:100vh;
+}
+
+/* 🔹 SIDEBAR */
+.sidebar{
+  width:70px;
+  background:#1e293b;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:10px;
+  gap:10px;
+}
+
+.sidebar button{
+  width:45px;height:45px;
+  border-radius:12px;
+  border:none;
+  background:#334155;
+  color:white;
+  cursor:pointer;
+}
+
+/* 🔹 MAIN */
+.main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+}
+
+/* 🔹 TOP BAR */
+.topbar{
+  display:flex;
+  gap:15px;
+  padding:10px;
+  justify-content:center;
+  background:#1e293b;
+}
+
+/* 🔹 CANVAS */
+canvas{
+  margin:auto;
+  background:white;
+  border-radius:20px;
+  box-shadow:0 10px 40px rgba(0,0,0,0.6);
+}
+
+/* 🔹 ALERT */
+.alert{
+  position:fixed;
+  top:20px;
+  right:20px;
+  background:#ef4444;
+  padding:10px;
+  border-radius:10px;
+  display:none;
+}
+
+/* 🔹 PAGE */
+.page{
+  text-align:center;
+  margin:5px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+<button onclick="tool='pen'">✍️</button>
+<button onclick="tool='line'">📏</button>
+<button onclick="tool='rect'">⬛</button>
+<button onclick="tool='circle'">⚪</button>
+<button onclick="tool='eraser'">🧽</button>
+<button onclick="tool='text'">🔤</button>
+<button onclick="tool='textbox'">🧾</button>
+
+<button onclick="drawRuler()">📐</button>
+<button onclick="drawProtractor()">🧭</button>
+
+<button onclick="undo()">↩</button>
+<button onclick="redo()">↪</button>
+
+<button onclick="clearCanvas()">🗑</button>
+</div>
+
+<div class="main">
+
+<div class="topbar">
+<input type="color" id="color">
+<input type="range" id="size" min="1" max="20" value="3">
+
+<select id="font">
+<option>Arial</option>
+<option>Courier New</option>
+<option>Times New Roman</option>
+<option style="font-family:'Noto Sans Devanagari'">Hindi</option>
+<option style="font-family:'Tiro Devanagari Sanskrit'">Sanskrit</option>
+</select>
+
+<select onchange="setTemplate(this.value)">
+<option value="clear">Clear</option>
+<option value="grid">Grid</option>
+<option value="lined">Lined</option>
+<option value="football">Football</option>
+<option value="music">Music</option>
+</select>
+</div>
+
+<div class="page">
+Page <span id="pageNum">1</span>
+<button onclick="prevPage()">⬅</button>
+<button onclick="nextPage()">➡</button>
+<button onclick="newPage()">+</button>
+</div>
+
+<canvas id="canvas" width="900" height="500"></canvas>
+</div>
+
+<div id="alertBox" class="alert"></div>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+
+let tool="pen",drawing=false;
+let startX,startY;
+let history=[],step=-1;
+
+let pages=[null],pageIndex=0,template="clear";
+
+function saveState(){
+  step++;
+  history=history.slice(0,step);
+  history.push(canvas.toDataURL());
+}
+
+function undo(){if(step>0){step--;loadImage(history[step]);}}
+function redo(){if(step<history.length-1){step++;loadImage(history[step]);}}
+
+function loadImage(src){
+  let img=new Image();
+  img.onload=()=>ctx.drawImage(img,0,0);
+  img.src=src;
+}
+
+canvas.onmousedown=e=>{
+  if(tool==="text"||tool==="textbox"){
+    let txt=prompt("Enter text:");
+    if(txt){
+      ctx.fillStyle=color.value;
+      ctx.font="20px "+font.value;
+      wrapText(txt,e.offsetX,e.offsetY);
+      checkAI(txt);
+      saveState();
+    }
+    return;
+  }
+
+  drawing=true;
+  startX=e.offsetX;
+  startY=e.offsetY;
+  ctx.beginPath();
+  ctx.moveTo(startX,startY);
+};
+
+canvas.onmousemove=e=>{
+  if(!drawing) return;
+
+  ctx.lineWidth=size.value;
+  ctx.lineCap="round";
+
+  if(tool==="pen"){
+    ctx.strokeStyle=color.value;
+    ctx.lineTo(e.offsetX,e.offsetY);
+    ctx.stroke();
+  }
+
+  if(tool==="eraser"){
+    ctx.globalCompositeOperation="destination-out";
+    ctx.lineTo(e.offsetX,e.offsetY);
+    ctx.stroke();
+    ctx.globalCompositeOperation="source-over";
+  }
+};
+
+canvas.onmouseup=e=>{
+  drawing=false;
+
+  let w=e.offsetX-startX;
+  let h=e.offsetY-startY;
+
+  ctx.strokeStyle=color.value;
+
+  if(tool==="rect") ctx.strokeRect(startX,startY,w,h);
+
+  if(tool==="line"){
+    ctx.beginPath();
+    ctx.moveTo(startX,startY);
+    ctx.lineTo(e.offsetX,e.offsetY);
+    ctx.stroke();
+  }
+
+  if(tool==="circle"){
+    let r=Math.sqrt(w*w+h*h);
+    ctx.beginPath();
+    ctx.arc(startX,startY,r,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  saveState();
+};
+
+function clearCanvas(){ctx.clearRect(0,0,900,500);}
+
+/* 📏 RULER */
+function drawRuler(){
+  ctx.fillStyle="rgba(0,0,0,0.1)";
+  ctx.fillRect(50,440,800,40);
+
+  ctx.strokeStyle="black";
+  ctx.fillStyle="black";
+  ctx.font="10px Arial";
+
+  for(let i=0;i<=40;i++){
+    let x=50+i*20;
+    let h=(i%5===0)?20:10;
+
+    ctx.beginPath();
+    ctx.moveTo(x,440);
+    ctx.lineTo(x,440+h);
+    ctx.stroke();
+
+    if(i%5===0) ctx.fillText(i,x-5,435);
+  }
+}
+
+/* 📐 PROTRACTOR */
+function drawProtractor(){
+  let cx=450,cy=400,r=120;
+
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,Math.PI,0);
+  ctx.stroke();
+
+  ctx.font="10px Arial";
+
+  for(let d=0;d<=180;d+=10){
+    let rad=Math.PI-(d*Math.PI/180);
+
+    let x1=cx+Math.cos(rad)*r;
+    let y1=cy+Math.sin(rad)*r;
+
+    let x2=cx+Math.cos(rad)*(r-10);
+    let y2=cy+Math.sin(rad)*(r-10);
+
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+
+    let tx=cx+Math.cos(rad)*(r-25);
+    let ty=cy+Math.sin(rad)*(r-25);
+
+    ctx.fillText(d+"°",tx-10,ty);
+  }
+}
+
+/* 📄 TEMPLATE */
+function setTemplate(t){
+  template=t;
+  clearCanvas();
+
+  if(t==="grid"){
+    for(let x=0;x<900;x+=40){
+      ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,500);ctx.stroke();
+    }
+  }
+
+  if(t==="lined"){
+    for(let y=40;y<500;y+=40){
+      ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(900,y);ctx.stroke();
+    }
+  }
+
+  if(t==="football"){
+    ctx.fillStyle="#2d5016";
+    ctx.fillRect(0,0,900,500);
+    ctx.strokeStyle="white";
+    ctx.strokeRect(50,50,800,400);
+    ctx.beginPath();ctx.moveTo(450,50);ctx.lineTo(450,450);ctx.stroke();
+  }
+
+  if(t==="music"){
+    for(let y=100;y<400;y+=120){
+      for(let i=0;i<5;i++){
+        ctx.beginPath();
+        ctx.moveTo(50,y+i*10);
+        ctx.lineTo(850,y+i*10);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+/* 🧾 TEXT WRAP */
+function wrapText(text,x,y){
+  let words=text.split(" ");
+  let line="";
+  for(let w of words){
+    let test=line+w+" ";
+    if(ctx.measureText(test).width>200){
+      ctx.fillText(line,x,y);
+      line=w+" ";
+      y+=20;
+    } else line=test;
+  }
+  ctx.fillText(line,x,y);
+}
+
+/* 🤖 AI CHECK */
+function checkAI(text){
+  if(text.match(/\bi\s/)) showAlert("Use capital I");
+
+  let m=text.match(/(\d+)\+(\d+)=(\d+)/);
+  if(m){
+    let a=+m[1],b=+m[2],c=+m[3];
+    if(a+b!==c) showAlert("Math wrong: "+(a+b));
+  }
+}
+
+function showAlert(msg){
+  let box=document.getElementById("alertBox");
+  box.innerText=msg;
+  box.style.display="block";
+  setTimeout(()=>box.style.display="none",3000);
+}
+
+/* 📄 PAGES */
+function savePage(){pages[pageIndex]=canvas.toDataURL();}
+function loadPage(){
+  clearCanvas();
+  if(pages[pageIndex]) loadImage(pages[pageIndex]);
+  pageNum.innerText=pageIndex+1;
+}
+function nextPage(){savePage();if(pageIndex<pages.length-1)pageIndex++;loadPage();}
+function prevPage(){savePage();if(pageIndex>0)pageIndex--;loadPage();}
+function newPage(){savePage();pages.push(null);pageIndex++;loadPage();}
+</script>
+
+</body>
+</html>
